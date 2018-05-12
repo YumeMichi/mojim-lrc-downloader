@@ -4,7 +4,7 @@
 
 ## 使用
 ```
-python songs.txt "FictionJunction"
+python lrc.py songs.txt "FictionJunction"
 ```
 
 ## TODO

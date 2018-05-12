@@ -56,6 +56,7 @@ if __name__ == '__main__':
     while line:
         song_list.append(line.strip('\n'))
         line = f.readline()
+    f.close()
 
     singer = sys.argv[2]
 
