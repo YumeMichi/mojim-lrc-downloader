@@ -4,8 +4,10 @@
 
 ## 使用
 ```
-python lrc.py songs.txt "FictionJunction"
+python lrc.py singer [input_song_file] [output_lrc_file]
 ```
+
+input_song_file 和 output_lrc_file 默认为当前目录下的 songs.txt 和 lrc.txt，可不指定。
 
 ## TODO
 

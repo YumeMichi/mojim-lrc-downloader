@@ -1,0 +1,12 @@
+2018-05-12 23:57:22 Fetching LRC: circus
+2018-05-12 23:57:25 Fetching LRC: aikoi
+2018-05-12 23:57:28 Fetching LRC: Silly-Go-Round
+2018-05-12 23:57:31 Fetching LRC: 焔の扉
+2018-05-12 23:57:33 Fetching LRC: よろこび
+2018-05-12 23:57:36 Fetching LRC: 荒野流転
+2018-05-12 23:57:38 Fetching LRC: ピアノ
+2018-05-12 23:57:40 Fetching LRC: 暁の車
+2018-05-12 23:57:42 Fetching LRC: cazador del amor
+2018-05-12 23:57:43 Fetching LRC: 記憶の森
+2018-05-12 23:57:44 No LRC: nowhere
+2018-05-12 23:57:57 Fetching LRC: 約束
