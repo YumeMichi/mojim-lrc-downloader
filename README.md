@@ -2,17 +2,23 @@
 
 用于下载墨镜歌词网的歌词
 
+## 安装
+```
+go install github.com/YumeMichi/mojim-lrc-downloader@latest
+```
+
 ## 使用
+1. 配置好 `lrc-in.txt`，格式为 `歌名,歌手,歌词编号`，其中歌词编号仅在存在相同歌手歌名情况下需要指定（根据提示操作）。
+2. 运行 `mojim-lrc-downloader` 等待歌词下载完成即可。
+
+首次运行会生成配置文件 `config.yaml`，根据需要进行修改即可。
 ```
-python lrc.py singer [input_song_file] [output_lrc_file]
+proxy:
+    enabled: true
+    protocol: socks5
+    ip: 127.0.0.1
+    port: 1081
+lrc:
+    load_file_name: lrc-in.txt
+    save_file_name: lrc-out.txt
 ```
-
-input_song_file 和 output_lrc_file 默认为当前目录下的 songs.txt 和 lrc.txt，可不指定。
-
-## TODO
-
-因为魔镜歌词网不支持分页，并且搜索结果只显示前 200 条，且还不支持歌手歌名联合查询，故需要解决以下几个问题：
-
-1. 针对检索结果前 200 条不包含的歌名，通过查询歌手的相关歌曲记录来查询
-2. 歌名、歌手文件读入，歌词检索结果文件读出
-3. 其他待补充

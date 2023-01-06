@@ -1,0 +1,8 @@
+proxy:
+    enabled: true
+    protocol: socks5
+    ip: 127.0.0.1
+    port: 1081
+lrc:
+    load_file_name: lrc-in.txt
+    save_file_name: lrc-out.txt
