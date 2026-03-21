@@ -1,230 +1,193 @@
-//
-// Copyright (C) 2022 YumeMichi
-//
-// SPDX-License-Identifier: Apache-2.0
-//
-
 package main
 
 import (
-	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
-	"github.com/YumeMichi/mojim-lrc-downloader/config"
-	"github.com/YumeMichi/mojim-lrc-downloader/utils"
-	"github.com/anaskhan96/soup"
-	"golang.org/x/net/proxy"
+	"github.com/manifoldco/promptui"
 )
 
 var (
-	mSearchUrl = "https://mojim.com/song_name.html?t3"
-	mSongUrl   = "https://mojim.com/twysong_id.htm"
-	mLrcUrl    = "https://mojim.com/twthxsong_idx1.htm"
-	client     http.Client
+	ServerAddr = "https://mojigeci.com"
+	SecretKey  = "wmn_api_secret_2024_v1"
+
+	DownloadPath = "downloads"
 )
 
-func init() {
-	if !utils.PathExists(config.Conf.Lrc.LoadFileName) {
-		_, err := os.Create(config.Conf.Lrc.LoadFileName)
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	if !utils.PathExists(config.Conf.Lrc.SaveFileName) {
-		_, err := os.Create(config.Conf.Lrc.SaveFileName)
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	c, err := NewDialer()
-	if err != nil {
-		panic(err)
-	}
-	client = c
+type SearchApiResp struct {
+	Code int           `json:"code"`
+	Msg  string        `json:"msg"`
+	Data SearchApiData `json:"data"`
 }
 
-func NewDialer() (client http.Client, err error) {
-	if config.Conf.Proxy.Enabled {
-		if strings.ToUpper(config.Conf.Proxy.Protocol) != "SOCKS5" {
-			fmt.Println("Only support SOCKS5 without authentication for now...")
-			return
-		}
-		var dialer proxy.Dialer
-		dialer, err = proxy.SOCKS5("tcp", config.Conf.Proxy.Ip+":"+config.Conf.Proxy.Port, nil, proxy.Direct)
-		if err != nil {
-			return
-		}
-		transport := &http.Transport{Dial: dialer.Dial}
-		client.Transport = transport
-	}
-	return
+type SearchApiData struct {
+	Data  []SongData `json:"data"`
+	Cache int        `json:"cache"`
 }
 
-func getSongIdList(songInfo string) (songIdList map[int]string) {
-	// fmt.Println(songInfo)
-	info := strings.Split(songInfo, ",")
-	// fmt.Println(info)
-	// fmt.Println(len(info))
-	if len(info) != 3 {
-		fmt.Println("Error line: ", songInfo)
-		return
-	}
-	songUrl := strings.ReplaceAll(mSearchUrl, "song_name", url.QueryEscape(info[0]))
-	req, err := http.NewRequest("GET", songUrl, nil)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	res, err := client.Do(req)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer res.Body.Close()
-
-	idx := 1
-	list := make(map[int]string)
-	doc := soup.HTMLParse(string(body))
-	spans := doc.FindAll("span", "class", "mxsh_ss4")
-	for _, span := range spans {
-		as := span.FindAll("a")
-		if len(as) == 0 {
-			continue
-		}
-		for _, a := range as {
-			title := a.Attrs()["title"]
-			// fmt.Println(title)
-			if strings.Contains(title, info[1]) {
-				if info[2] != "" {
-					id, err := strconv.Atoi(info[2])
-					if err != nil {
-						return
-					}
-					if idx == id {
-						// fmt.Println(a.Attrs()["title"])
-						list[id] = strings.ReplaceAll(strings.ReplaceAll(a.Attrs()["href"], "/twy", ""), ".htm", "")
-					}
-				} else {
-					// fmt.Println(a.Attrs()["title"])
-					list[idx] = strings.ReplaceAll(strings.ReplaceAll(a.Attrs()["href"], "/twy", ""), ".htm", "")
-				}
-			}
-			idx++
-		}
-	}
-
-	// fmt.Println(list)
-
-	return list
+type SongData struct {
+	ID     int      `json:"id"`
+	Name   string   `json:"name"`
+	Artist []string `json:"artist"`
+	Cover  string   `json:"cover"`
+	Album  string   `json:"album"`
 }
 
-func getLrcById(songId string) (lrc string) {
-	lrcUrl := strings.ReplaceAll(mLrcUrl, "song_id", songId)
-	req, err := http.NewRequest("GET", lrcUrl, nil)
+type LrcApiResp struct {
+	Code int        `json:"code"`
+	Msg  string     `json:"msg"`
+	Data LrcApiData `json:"data"`
+}
+
+type LrcApiData struct {
+	Code         string  `json:"code"`
+	Data         LrcData `json:"data"`
+	Cache        int     `json:"cache"`
+	AudioExpired int     `json:"audio_expired"`
+	Source       string  `json:"source"`
+}
+
+type LrcData struct {
+	Name     string `json:"name"`
+	Artist   string `json:"artist"`
+	Cover    string `json:"cover"`
+	AudioURL string `json:"audio_url"`
+	Lyrics   string `json:"lyrics"`
+	Tlyric   string `json:"tlyric"`
+}
+
+func sign(name, ts string) string {
+	hash := sha256.Sum256([]byte(name + ts + SecretKey))
+	return hex.EncodeToString(hash[:])
+}
+
+func request(api string) ([]byte, error) {
+	req, err := http.NewRequest("GET", api, nil)
 	if err != nil {
-		fmt.Println(err)
-		return
+		return nil, err
 	}
 
-	res, err := client.Do(req)
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36")
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Println(err)
-		return
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("http error: %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(res.Body)
+	res, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Println(err)
-		return
+		return nil, err
 	}
-	defer res.Body.Close()
 
-	doc := soup.HTMLParse(string(body))
-	script := doc.Find("script").HTML()
-	// fmt.Println(script)
-
-	regex := regexp.MustCompile("var swfmm = \"(.*?)\";")
-	match := regex.FindSubmatch([]byte(script))
-	if len(match) > 0 {
-		content, err := url.QueryUnescape(strings.ReplaceAll(string(match[len(match)-1]), "_", "%"))
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		return content
-	}
-	return
+	return res, nil
 }
 
 func main() {
-	inFile, err := os.OpenFile(config.Conf.Lrc.LoadFileName, os.O_RDONLY, 0777)
+	kw := strings.Join(os.Args[1:], " ")
+	ts := strconv.Itoa(int(time.Now().UnixMilli()))
+	sig := sign(kw, ts)
+
+	listParams := url.Values{
+		"keyword":   {kw},
+		"timestamp": {ts},
+		"signature": {sig},
+		"page":      {"1"},
+		"pageSize":  {"12"},
+	}
+	listQuery := listParams.Encode()
+	listApi := ServerAddr + "/api/search_lists?" + listQuery
+
+	res, err := request(listApi)
 	if err != nil {
 		panic(err)
 	}
-	defer inFile.Close()
 
-	outFile, err := os.OpenFile(config.Conf.Lrc.SaveFileName, os.O_WRONLY|os.O_APPEND, 0777)
+	var listData SearchApiResp
+	if err := json.Unmarshal(res, &listData); err != nil {
+		panic(err)
+	}
+
+	if listData.Code != 200 {
+		panic(listData.Msg)
+	}
+
+	prompt := promptui.Select{
+		Label: "选择需要下载的歌词",
+		Items: listData.Data.Data,
+		Templates: &promptui.SelectTemplates{
+			Label:    "{{ . }}",
+			Active:   "👉 {{ .Name }} ({{ .Album }}) - {{ index .Artist 0 }}",
+			Inactive: "  {{ .Name }} ({{ .Album }}) - {{ index .Artist 0 }}",
+			Selected: "✔ {{ .Name }} ({{ .Album }}) - {{ index .Artist 0 }}",
+			Help:     "使用方向键选择 (↑ ↓ ← →)，回车确认。",
+		},
+	}
+
+	selected, _, err := prompt.Run()
+	if err != nil {
+		return
+	}
+
+	song := listData.Data.Data[selected]
+
+	ts = strconv.Itoa(int(time.Now().UnixMilli()))
+	sig = sign(kw, ts)
+
+	lrcParams := url.Values{
+		"id":          {strconv.Itoa(song.ID)},
+		"song_name":   {song.Name},
+		"song_artist": {strings.Join(song.Artist, "、")},
+		"song_cover":  {song.Cover},
+		"keyword":     {kw},
+		"timestamp":   {ts},
+		"signature":   {sig},
+	}
+	lrcQuery := lrcParams.Encode()
+	lrcApi := ServerAddr + "/api/get_lyrics_by_id?" + lrcQuery
+
+	res, err = request(lrcApi)
 	if err != nil {
 		panic(err)
 	}
-	defer outFile.Close()
 
-	reader := bufio.NewReader(inFile)
-	writer := bufio.NewWriter(outFile)
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil && err != io.EOF {
-			panic(err)
-		}
-
-		if err == io.EOF {
-			break
-		}
-
-		line = strings.TrimSpace(line)
-		fmt.Printf("Pulling LRC for %s...\n", line)
-		songIdList := getSongIdList(line)
-		if len(songIdList) == 0 {
-			fmt.Printf("NO LRC for %s\n", line)
-		} else if len(songIdList) == 1 {
-			for _, uid := range songIdList {
-				lrc := getLrcById(uid)
-				if lrc != "" {
-					writer.WriteString(lrc)
-					writer.Flush()
-				}
-			}
-		} else {
-			fmt.Printf("There are multiple LRCs for %s, please specify the ID of the one you need in lrc-in.txt.\n", line)
-			fmt.Println("ID\tLink")
-			for id, uid := range songIdList {
-				songId := strconv.Itoa(id)
-				fmt.Println(songId + "\t" + strings.ReplaceAll(mSongUrl, "song_id", uid))
-			}
-		}
-		// fmt.Println(songIdList)
-	}
-
-	reader = bufio.NewReader(os.Stdin)
-	fmt.Println("Press Enter to exit")
-	_, err = reader.ReadString('\n')
-	if err != nil {
+	var lrc LrcApiResp
+	if err := json.Unmarshal(res, &lrc); err != nil {
 		panic(err)
 	}
+
+	if lrc.Code != 200 {
+		panic(lrc.Msg)
+	}
+
+	fileName := fmt.Sprintf("%d %s - %s", song.ID, lrc.Data.Data.Artist, lrc.Data.Data.Name)
+	jpLrcFile := filepath.Join(DownloadPath, fileName+".lrc")
+	chtLrcFile := filepath.Join(DownloadPath, fileName+".cht.lrc")
+
+	if err := os.MkdirAll(DownloadPath, 0755); err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(jpLrcFile, []byte(lrc.Data.Data.Lyrics), 0644); err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(chtLrcFile, []byte(lrc.Data.Data.Tlyric), 0644); err != nil {
+		panic(err)
+	}
+
+	fmt.Println("下载完成！")
 }

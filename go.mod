@@ -1,11 +1,10 @@
 module github.com/YumeMichi/mojim-lrc-downloader
 
-go 1.19
+go 1.26.1
+
+require github.com/manifoldco/promptui v0.9.0
 
 require (
-	github.com/anaskhan96/soup v1.2.5
-	golang.org/x/net v0.17.0
-	gopkg.in/yaml.v3 v3.0.1
+	github.com/chzyer/readline v1.5.1 // indirect
+	golang.org/x/sys v0.42.0 // indirect
 )
-
-require golang.org/x/text v0.13.0 // indirect
