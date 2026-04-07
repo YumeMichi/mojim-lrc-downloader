@@ -220,12 +220,15 @@ func parseLrc(lrc string) []LrcLine {
 
 		t := parseLrcTime(match[1], match[2], match[3])
 		start := max(t-200, 0) // 作为字幕而言，提前 200ms 显示更符合人眼习惯
+		text := strings.TrimSpace(match[4])
+		if text == "" {
+			continue
+		}
 
 		if len(res) > 0 {
 			res[len(res)-1].End = start
 		}
 
-		text := match[4]
 		res = append(res, LrcLine{
 			Text:  text,
 			Start: start,

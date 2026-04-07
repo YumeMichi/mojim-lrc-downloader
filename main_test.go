@@ -29,6 +29,21 @@ func TestParseLrc(t *testing.T) {
 	}
 }
 
+func TestParseLrcMergeEmptyLine(t *testing.T) {
+	input := "[02:31.96]語り合うより和\n[02:33.26]\n[02:34.30]次の句"
+	got := parseLrc(input)
+	if len(got) != 2 {
+		t.Fatalf("len(parseLrc()) = %d, want 2", len(got))
+	}
+
+	if got[0].Start != 151760 || got[0].End != 154100 || got[0].Text != "語り合うより和" {
+		t.Fatalf("line0 = %+v", got[0])
+	}
+	if got[1].Start != 154100 || got[1].End != 0 || got[1].Text != "次の句" {
+		t.Fatalf("line1 = %+v", got[1])
+	}
+}
+
 func TestSanitizeFileName(t *testing.T) {
 	got := sanitizeFileName(`1 a/b:c*?"<>|`)
 	want := "1 a／b：c＊？＂＜＞｜"
